@@ -63,7 +63,6 @@ case ":$PATH:" in
        echo "add to PATH:"
        echo "  export PATH=\"$DEST:\$PATH\"" ;;
 esac
-
 echo ""
 echo "next:"
 echo "  popr config <your-api-key>"
