@@ -1,13 +1,13 @@
 #!/bin/sh
 # popr installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/你的用户名/popr/main/install.sh | sh
+# curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/wxy6987363/popr/main/install.sh | sh
 
 set -e
 
-REPO="你的用户名/popr"
+REPO="wxy6987363/popr"
 BIN="popr"
 
-# 检测平台
+# ---------- 平台检测 ----------
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
 
@@ -25,25 +25,39 @@ esac
 
 FILE="popr-${PLATFORM}-${ARCH_TAG}"
 
-# 拿最新版本
-echo "fetching latest release..."
-LATEST=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-    | grep '"tag_name"' | head -1 | cut -d'"' -f4)
+# ---------- 拿最新版本号（走 github.com 重定向，不用 api.github.com） ----------
+echo "fetching latest version..."
 
-if [ -z "$LATEST" ]; then
-    echo "failed to fetch latest release"; exit 1
+if [ -n "$VERSION" ]; then
+    LATEST="$VERSION"
+else
+    LATEST=$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+        "https://github.com/${REPO}/releases/latest" \
+        | sed -E 's#.*/tag/##')
 fi
 
-echo "latest: $LATEST"
+if [ -z "$LATEST" ] || [ "$LATEST" = "latest" ]; then
+    echo "error: cannot detect latest version."
+    echo "       try: VERSION=v1.4.2 sh install.sh"
+    exit 1
+fi
 
+echo "version: $LATEST"
+
+# ---------- 下载二进制 ----------
 URL="https://github.com/${REPO}/releases/download/${LATEST}/${FILE}"
 TMP=$(mktemp)
 
-echo "downloading ${URL}..."
-curl -fsSL "$URL" -o "$TMP"
+echo "downloading: $URL"
+if ! curl -fsSL "$URL" -o "$TMP"; then
+    echo "error: download failed"
+    rm -f "$TMP"
+    exit 1
+fi
+
 chmod +x "$TMP"
 
-# 选安装目录
+# ---------- 安装 ----------
 if [ -w /usr/local/bin ]; then
     DEST="/usr/local/bin"
 elif [ -w /bin ]; then
@@ -56,13 +70,16 @@ fi
 mv "$TMP" "$DEST/$BIN"
 echo "installed: $DEST/$BIN"
 
-# 提示 PATH
+# ---------- PATH 提示 ----------
 case ":$PATH:" in
     *":$DEST:"*) ;;
-    *) echo ""
-       echo "add to PATH:"
-       echo "  export PATH=\"$DEST:\$PATH\"" ;;
+    *)
+        echo ""
+        echo "add to PATH:"
+        echo "  export PATH=\"$DEST:\$PATH\""
+        ;;
 esac
+
 echo ""
 echo "next:"
 echo "  popr config <your-api-key>"
