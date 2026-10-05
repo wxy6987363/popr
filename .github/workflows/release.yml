@@ -17,20 +17,20 @@ jobs:
         include:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-            name: popr-linux-x86_64
+            name: linux-x86_64
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            name: popr-linux-aarch64
+            name: linux-aarch64
           - target: x86_64-pc-windows-gnu
             os: ubuntu-latest
-            name: popr-windows-x86_64.exe
+            name: windows-x86_64.exe
             ext: .exe
           - target: x86_64-apple-darwin
             os: macos-latest
-            name: popr-macos-x86_64
+            name: macos-x86_64
           - target: aarch64-apple-darwin
             os: macos-latest
-            name: popr-macos-aarch64
+            name: macos-aarch64
 
     steps:
       - uses: actions/checkout@v4

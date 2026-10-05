@@ -17,7 +17,7 @@ REPO="wxy6987363/popr"
 BIN="popr"
 
 # ---------- 版本（发版时由 push.sh 自动改） ----------
-VERSION="v2.1.0"
+VERSION="v2.1.1"
 
 # ---------- 解析参数 ----------
 ACTION="install"
