@@ -71,7 +71,6 @@ jobs:
               ;;
           esac
           if [ -f .cargo/config.toml ]; then
-            echo "--- .cargo/config.toml ---"
             cat .cargo/config.toml
           fi
 
@@ -83,7 +82,56 @@ jobs:
         run: |
           cp "target/${{ matrix.target }}/release/popr${{ matrix.ext }}" "${{ matrix.name }}"
 
-      - name: Upload to Release
+      - name: Upload binary
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.name }}
+
+  upload-scripts:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Upload install scripts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            install.sh
+            install.ps1
+
+  source-tarball:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create source tarball
+        run: |
+          NAME="popr-${GITHUB_REF_NAME}-src.tar.bz2"
+          ROOT="popr-${GITHUB_REF_NAME}"
+
+          # 用一个临时目录包一层顶层目录
+          mkdir -p "pkg/${ROOT}"
+
+          # 复制源码（排除不需要的）
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='target' \
+            --exclude='*.tar.bz2' \
+            ./ "pkg/${ROOT}/"
+
+          # 打包
+          cd pkg
+          tar -cjf "../${NAME}" "${ROOT}"
+          cd ..
+
+          mv "${NAME}" .
+
+          ls -lh "${NAME}"
+
+      - name: Upload source tarball
+        uses: softprops/action-gh-release@v2
+        with:
+          files: popr-*-src.tar.bz2
