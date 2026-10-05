@@ -18,7 +18,7 @@ $Repo = 'wxy6987363/popr'
 $Bin  = 'popr.exe'
 
 # ---------- 版本（发版时由 push.sh 自动改） ----------
-$Version = 'v2.0.0'
+$Version = 'v2.1.0'
 
 # ---------- 解析参数 ----------
 $Action = 'install'
