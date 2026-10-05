@@ -1,0 +1,30 @@
+[package]
+name = "popr"
+version = "1.0.0"
+edition = "2021"
+description = "Pylind plugin publisher"
+license = "MIT"
+
+[[bin]]
+name = "popr"
+path = "src/main.rs"
+
+[dependencies]
+clap       = { version = "4", features = ["derive"] }
+json5      = "0.4"
+reqwest    = { version = "0.12", default-features = false, features = [
+    "blocking",
+    "multipart",
+    "rustls-tls",
+    "json",
+] }
+zip        = { version = "2", default-features = false, features = ["deflate"] }
+walkdir    = "2"
+dirs       = "5"
+serde_json = "1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
