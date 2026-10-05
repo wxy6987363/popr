@@ -66,9 +66,14 @@ jobs:
             x86_64-pc-windows-gnu)
               printf '[target.x86_64-pc-windows-gnu]\nlinker = "x86_64-w64-mingw32-gcc"\n' >> .cargo/config.toml
               ;;
+            *)
+              echo "no linker override for ${{ matrix.target }}"
+              ;;
           esac
-          echo "--- .cargo/config.toml ---"
-          cat .cargo/config.toml
+          if [ -f .cargo/config.toml ]; then
+            echo "--- .cargo/config.toml ---"
+            cat .cargo/config.toml
+          fi
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
