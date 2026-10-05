@@ -1,101 +1,77 @@
 # popr installer for Windows
 #
-# 用法:
+# 用法（PowerShell 5.1+）:
 #   irm https://github.com/wxy6987363/popr/releases/latest/download/install.ps1 | iex
-#   irm .../install.ps1 | iex  然后脚本会读 $env:ACTION
+#   $s = irm https://github.com/wxy6987363/popr/releases/latest/download/install.ps1
+#   & ([scriptblock]::Create($s)) uninstall
 #
-# 或者本地跑:
-#   powershell -File install.ps1                 # 安装
-#   powershell -File install.ps1 uninstall       # 卸载
-#   powershell -File install.ps1 --version       # 看版本
-#   powershell -File install.ps1 --help
-#
-# 环境变量:
-#   $env:VERSION  指定版本安装
-#   $env:ACTION   动作：install / uninstall / version / help
-#                 （远程 irm | iex 方式用这个传参）
+# 本地用法:
+#   powershell -File install.ps1
+#   powershell -File install.ps1 uninstall
 
 $ErrorActionPreference = 'Stop'
+
+# PS 5.1 默认 TLS 1.0，强制 TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $Repo = 'wxy6987363/popr'
 $Bin  = 'popr.exe'
 
-# ---------- 解析参数 ----------
-# 本地 powershell -File 时用 $args；远程 irm|iex 时用 $env:ACTION
-$Action = 'install'
+# ---------- 版本（发版时由 push.sh 自动改） ----------
+$Version = 'v2.0.0'
 
-if ($args -and $args.Count -gt 0) {
-    $a = $args[0].ToLower()
-    switch ($a) {
-        'uninstall' { $Action = 'uninstall' }
-        '-u'        { $Action = 'uninstall' }
-        '--version' { $Action = 'version' }
-        '-v'        { $Action = 'version' }
-        '--help'    { $Action = 'help' }
-        '-h'        { $Action = 'help' }
-        'install'   { $Action = 'install' }
+# ---------- 解析参数 ----------
+$Action = 'install'
+if ($args.Count -gt 0) {
+    switch -Regex ($args[0]) {
+        '^(uninstall|--uninstall|-u)$' { $Action = 'uninstall' }
+        '^(--version|-v)$'             { $Action = 'version' }
+        '^(--help|-h)$'                { $Action = 'help' }
+        '^install$'                    { $Action = 'install' }
     }
-} elseif ($env:ACTION) {
-    $Action = $env:ACTION.ToLower()
 }
 
-# ---------- curl.exe ----------
-$curl = Get-Command curl.exe -ErrorAction SilentlyContinue
-
-# ---------- 找已安装位置 ----------
+# ---------- 找安装位置 ----------
 function Find-InstallPath {
-    # 常见位置
     $candidates = @(
         (Join-Path $env:USERPROFILE 'bin\popr.exe'),
-        'C:\Program Files\popr\popr.exe',
-        'C:\Program Files (x86)\popr\popr.exe'
+        (Join-Path $env:LOCALAPPDATA 'popr\popr.exe')
     )
     foreach ($p in $candidates) {
         if (Test-Path $p) { return $p }
     }
-
-    # 从 PATH 里找
-    $cmd = Get-Command popr -ErrorAction SilentlyContinue
+    $cmd = Get-Command $Bin -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
-
     return $null
 }
 
 # ---------- help ----------
 function Show-Help {
-    Write-Host @"
-popr installer (Windows)
+    @"
+popr installer
 
 Usage:
-  powershell -File install.ps1                  install latest
-  powershell -File install.ps1 uninstall        remove popr
-  powershell -File install.ps1 --version        show installed version
-  powershell -File install.ps1 --help           this help
+  install                       install popr $Version
+  uninstall                     remove popr
+  --version                     show installed version
+  --help                        this help
 
-Remote usage:
-  irm <url>/install.ps1 | iex                   install
-  `$env:ACTION='uninstall'; irm <url>/install.ps1 | iex
-
-Environment:
-  `$env:VERSION='v1.4.2'    install specific version
-  `$env:ACTION='uninstall'  action when using irm | iex
-"@
+Examples:
+  irm https://github.com/wxy6987363/popr/releases/latest/download/install.ps1 | iex
+  `$s = irm https://github.com/wxy6987363/popr/releases/latest/download/install.ps1
+  & ([scriptblock]::Create(`$s)) uninstall
+"@ | Write-Host
 }
 
 # ---------- version ----------
-function Do-Version {
+function Show-Version {
     $p = Find-InstallPath
     if (-not $p) {
         Write-Host "popr is not installed"
         exit 1
     }
     Write-Host "path: $p"
-    try {
-        & $p --version
-    } catch {
-        Write-Host "version unknown"
-    }
+    try { & $p --version } catch { Write-Host "version unknown" }
 }
 
 # ---------- uninstall ----------
@@ -103,50 +79,37 @@ function Do-Uninstall {
     $p = Find-InstallPath
     if (-not $p) {
         Write-Host "popr is not installed"
-        exit 0
+        return
     }
 
     Write-Host "removing: $p"
     try {
-        Remove-Item -Path $p -Force
+        Remove-Item -Force $p
         Write-Host "removed: $p"
     } catch {
-        Write-Host "error removing: $_" -ForegroundColor Red
+        Write-Host "error: cannot remove $p : $_" -ForegroundColor Red
         exit 1
     }
 
-    # 清理空目录
-    $parent = Split-Path $p
-    if ((Test-Path $parent) -and -not (Get-ChildItem $parent -Force)) {
-        # 只有当目录是 %USERPROFILE%\bin 且为空才删
-        if ($parent -eq (Join-Path $env:USERPROFILE 'bin')) {
-            Remove-Item $parent -Force -Recurse
-            Write-Host "removed empty dir: $parent"
-        }
-    }
-
-    # 检查 PATH 里还有没有残留
-    $cmd = Get-Command popr -ErrorAction SilentlyContinue
-    if ($cmd) {
+    # 尝试从用户 PATH 里移除目录（可选）
+    $binDir = Split-Path $p
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if ($userPath -and $userPath -like "*$binDir*") {
         Write-Host ""
-        Write-Host "note: another 'popr' still in PATH: $($cmd.Source)"
+        Write-Host "note: '$binDir' is still in your user PATH."
+        Write-Host "      Remove it manually if you want:"
+        Write-Host "      Settings > Environment Variables > User PATH"
     }
 
     Write-Host ""
-    Write-Host "note: config kept:"
+    Write-Host "note: config file kept:"
     Write-Host "  $env:USERPROFILE\.pylindrc"
-    Write-Host "  $env:ProgramData\pylind\popr.json"
     Write-Host "remove manually if you want."
 }
 
 # ---------- install ----------
 function Do-Install {
-    if (-not $curl) {
-        Write-Host "error: curl.exe not found (need Windows 10 1803+)" -ForegroundColor Red
-        exit 1
-    }
-
-    # 平台
+    # 平台检测
     $Arch = $env:PROCESSOR_ARCHITECTURE
     switch ($Arch) {
         'AMD64' { $ArchTag = 'x86_64' }
@@ -157,62 +120,35 @@ function Do-Install {
         }
     }
 
-    $File = "popr-windows-${ArchTag}.exe"
+    $File = "windows-${ArchTag}.exe"
+    $Url = "https://github.com/$Repo/releases/download/$Version/$File"
 
-    # 拿最新版本
-    Write-Host "fetching latest version..."
-
-    function Get-LatestTag($repo) {
-        $url = "https://github.com/$repo/releases/latest"
-        $headers = & curl.exe -sI "$url" 2>$null
-        foreach ($line in $headers) {
-            if ($line -match '^location:\s*(.+)$') {
-                $loc = $matches[1].Trim()
-                return ($loc -split '/tag/')[-1]
-            }
-        }
-        return $null
-    }
-
-    if ($env:VERSION) {
-        $Latest = $env:VERSION
-    } else {
-        $Latest = Get-LatestTag $Repo
-    }
-
-    if (-not $Latest -or $Latest -eq 'latest') {
-        Write-Host "error: cannot detect latest version." -ForegroundColor Red
-        Write-Host "       try: `$env:VERSION='v1.4.2'; irm ... | iex"
-        exit 1
-    }
-
-    Write-Host "version: $Latest"
-
-    # 下载
-    $Url = "https://github.com/$Repo/releases/download/$Latest/$File"
     $InstallDir = Join-Path $env:USERPROFILE 'bin'
     $Dest = Join-Path $InstallDir $Bin
 
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
+    Write-Host "installing popr $Version for windows-${ArchTag}..."
     Write-Host "downloading: $Url"
-    & curl.exe -fL --progress-bar -o "$Dest" "$Url"
 
-    if (-not (Test-Path $Dest)) {
-        Write-Host "download failed" -ForegroundColor Red
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $Dest -UseBasicParsing
+    } catch {
+        Write-Host "error: download failed: $_" -ForegroundColor Red
         exit 1
     }
 
+    # 验证大小（小于 100KB 大概率是错误页）
     $size = (Get-Item $Dest).Length
     if ($size -lt 100000) {
-        Write-Host "downloaded file too small ($size bytes)" -ForegroundColor Red
-        Remove-Item $Dest -Force
+        Write-Host "error: downloaded file too small ($size bytes)" -ForegroundColor Red
+        Remove-Item -Force $Dest
         exit 1
     }
 
     Write-Host "installed: $Dest ($size bytes)"
 
-    # PATH（用户级）
+    # PATH
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     if (-not $userPath) { $userPath = '' }
 
@@ -247,7 +183,7 @@ function Do-Install {
 switch ($Action) {
     'install'   { Do-Install }
     'uninstall' { Do-Uninstall }
-    'version'   { Do-Version }
+    'version'   { Show-Version }
     'help'      { Show-Help }
-    default     { Show-Help }
+    default     { Do-Install }
 }

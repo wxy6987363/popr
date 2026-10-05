@@ -2,22 +2,22 @@
 # popr installer
 #
 # 用法:
-#   sh install.sh                # 安装最新版
+#   sh install.sh                # 安装
 #   sh install.sh uninstall      # 卸载
 #   sh install.sh --version      # 显示已装版本
 #   sh install.sh --help
 #
-# 环境变量:
-#   VERSION=v1.4.2   指定版本安装
-#
 # 网络安装:
-#   curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/wxy6987363/popr/main/install.sh | sh
+#   curl -fsSL https://github.com/wxy6987363/popr/releases/latest/download/install.sh | sh
 #   curl -fsSL https://github.com/wxy6987363/popr/releases/latest/download/install.sh | sh -s -- uninstall
 
 set -e
 
 REPO="wxy6987363/popr"
 BIN="popr"
+
+# ---------- 版本（发版时由 push.sh 自动改） ----------
+VERSION="v2.0.0"
 
 # ---------- 解析参数 ----------
 ACTION="install"
@@ -28,7 +28,7 @@ for arg in "$@"; do
         --version|-v)             ACTION="version" ;;
         --help|-h)                ACTION="help" ;;
         install)                  ACTION="install" ;;
-        *)                        ;; # 忽略未知参数
+        *)                        ;;
     esac
 done
 
@@ -49,19 +49,17 @@ detect_platform() {
         *) echo "unsupported arch: $ARCH" >&2; exit 1 ;;
     esac
 
-    FILE="popr-${PLATFORM}-${ARCH_TAG}"
+    FILE="${PLATFORM}-${ARCH_TAG}"
 }
 
 # ---------- 找安装位置 ----------
 find_install_path() {
-    # 优先查 PATH 里已有的 popr
     FOUND="$(command -v "$BIN" 2>/dev/null || true)"
     if [ -n "$FOUND" ]; then
         echo "$FOUND"
         return
     fi
 
-    # 常见位置
     for d in /usr/local/bin /usr/bin /bin "$HOME/.local/bin"; do
         if [ -e "$d/$BIN" ]; then
             echo "$d/$BIN"
@@ -78,13 +76,10 @@ do_help() {
 popr installer
 
 Usage:
-  sh install.sh                install latest version
+  sh install.sh                install popr $VERSION
   sh install.sh uninstall      remove popr
   sh install.sh --version      show installed version
   sh install.sh --help         this help
-
-Environment:
-  VERSION=v1.4.2               install specific version
 
 Install examples:
   curl -fsSL https://github.com/wxy6987363/popr/releases/latest/download/install.sh | sh
@@ -113,7 +108,6 @@ do_uninstall() {
 
     echo "removing: $P"
 
-    # 尝试直接删
     if [ -w "$P" ]; then
         rm -f "$P"
         echo "removed: $P"
@@ -126,7 +120,6 @@ do_uninstall() {
         exit 1
     fi
 
-    # 检查是否还在 PATH（提示用户清理）
     if command -v "$BIN" >/dev/null 2>&1; then
         echo ""
         echo "note: '$BIN' still resolvable in PATH. You may have another copy:"
@@ -144,27 +137,9 @@ do_uninstall() {
 do_install() {
     detect_platform
 
-    # 拿最新版本
-    echo "fetching latest version..."
+    echo "installing popr $VERSION for ${PLATFORM}-${ARCH_TAG}..."
 
-    if [ -n "$VERSION" ]; then
-        LATEST="$VERSION"
-    else
-        LATEST=$(curl -fsSL -o /dev/null -w '%{url_effective}' \
-            "https://github.com/${REPO}/releases/latest" \
-            | sed -E 's#.*/tag/##')
-    fi
-
-    if [ -z "$LATEST" ] || [ "$LATEST" = "latest" ]; then
-        echo "error: cannot detect latest version." >&2
-        echo "       try: VERSION=v1.4.2 sh install.sh" >&2
-        exit 1
-    fi
-
-    echo "version: $LATEST"
-
-    # 下载
-    URL="https://github.com/${REPO}/releases/download/${LATEST}/${FILE}"
+    URL="https://github.com/${REPO}/releases/download/${VERSION}/${FILE}"
     TMP=$(mktemp)
 
     echo "downloading: $URL"
@@ -176,7 +151,6 @@ do_install() {
 
     chmod +x "$TMP"
 
-    # 找安装目录
     if [ -w /usr/local/bin ]; then
         DEST_DIR="/usr/local/bin"
     elif [ -w /bin ]; then
@@ -188,7 +162,6 @@ do_install() {
 
     DEST="$DEST_DIR/$BIN"
 
-    # 如果已存在，先删旧的（防止 "text file busy"）
     if [ -e "$DEST" ]; then
         rm -f "$DEST" 2>/dev/null || sudo rm -f "$DEST"
     fi
@@ -199,7 +172,6 @@ do_install() {
 
     echo "installed: $DEST"
 
-    # PATH 提示
     case ":$PATH:" in
         *":$DEST_DIR:"*) ;;
         *)
