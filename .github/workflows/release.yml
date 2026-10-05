@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            name: popr-linux-x86_64
+            strip: true
+          - target: aarch64-unknown-linux-musl
+            name: popr-linux-aarch64
+            strip: true
+          - target: x86_64-pc-windows-gnu
+            name: popr-windows-x86_64.exe
+            ext: .exe
+          - target: x86_64-apple-darwin
+            name: popr-macos-x86_64
+            strip: true
+            macos: true
+          - target: aarch64-apple-darwin
+            name: popr-macos-aarch64
+            strip: true
+            macos: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl tools
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Install mingw
+        if: contains(matrix.target, 'windows')
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Install cross-linker for aarch64-musl
+        if: matrix.target == 'aarch64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Configure linker
+        run: |
+          mkdir -p .cargo
+          case "${{ matrix.target }}" in
+            x86_64-unknown-linux-musl) echo '[target.x86_64-unknown-linux-musl]
+          linker = "musl-gcc"' >> .cargo/config.toml ;;
+            aarch64-unknown-linux-musl) echo '[target.aarch64-unknown-linux-musl]
+          linker = "aarch64-linux-gnu-gcc"' >> .cargo/config.toml ;;
+            x86_64-pc-windows-gnu) echo '[target.x86_64-pc-windows-gnu]
+          linker = "x86_64-w64-mingw32-gcc"' >> .cargo/config.toml ;;
+          esac
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Rename
+        run: |
+          SRC="target/${{ matrix.target }}/release/popr${{ matrix.ext }}"
+          DST="${{ matrix.name }}"
+          cp "$SRC" "$DST"
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.name }}
