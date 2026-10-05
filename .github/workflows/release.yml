@@ -10,27 +10,27 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
             name: popr-linux-x86_64
-            strip: true
-          - target: aarch64-unknown-linux-musl
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
             name: popr-linux-aarch64
-            strip: true
           - target: x86_64-pc-windows-gnu
+            os: ubuntu-latest
             name: popr-windows-x86_64.exe
             ext: .exe
           - target: x86_64-apple-darwin
+            os: macos-latest
             name: popr-macos-x86_64
-            strip: true
-            macos: true
           - target: aarch64-apple-darwin
+            os: macos-latest
             name: popr-macos-aarch64
-            strip: true
-            macos: true
 
     steps:
       - uses: actions/checkout@v4
@@ -48,30 +48,35 @@ jobs:
         if: contains(matrix.target, 'windows')
         run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
 
-      - name: Install cross-linker for aarch64-musl
-        if: matrix.target == 'aarch64-unknown-linux-musl'
+      - name: Install aarch64 linker
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Configure linker
+        shell: bash
         run: |
           mkdir -p .cargo
           case "${{ matrix.target }}" in
-            x86_64-unknown-linux-musl) echo '[target.x86_64-unknown-linux-musl]
-          linker = "musl-gcc"' >> .cargo/config.toml ;;
-            aarch64-unknown-linux-musl) echo '[target.aarch64-unknown-linux-musl]
-          linker = "aarch64-linux-gnu-gcc"' >> .cargo/config.toml ;;
-            x86_64-pc-windows-gnu) echo '[target.x86_64-pc-windows-gnu]
-          linker = "x86_64-w64-mingw32-gcc"' >> .cargo/config.toml ;;
+            x86_64-unknown-linux-musl)
+              printf '[target.x86_64-unknown-linux-musl]\nlinker = "musl-gcc"\n' >> .cargo/config.toml
+              ;;
+            aarch64-unknown-linux-gnu)
+              printf '[target.aarch64-unknown-linux-gnu]\nlinker = "aarch64-linux-gnu-gcc"\n' >> .cargo/config.toml
+              ;;
+            x86_64-pc-windows-gnu)
+              printf '[target.x86_64-pc-windows-gnu]\nlinker = "x86_64-w64-mingw32-gcc"\n' >> .cargo/config.toml
+              ;;
           esac
+          echo "--- .cargo/config.toml ---"
+          cat .cargo/config.toml
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Rename
+        shell: bash
         run: |
-          SRC="target/${{ matrix.target }}/release/popr${{ matrix.ext }}"
-          DST="${{ matrix.name }}"
-          cp "$SRC" "$DST"
+          cp "target/${{ matrix.target }}/release/popr${{ matrix.ext }}" "${{ matrix.name }}"
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
